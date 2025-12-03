@@ -30,8 +30,8 @@ Cependant, certains modules doivent communiquer entre eux.
 
 Ce TP simule cette architecture :
 
-* **VNet-Socle** (services essentiels internes)
-* **VNet-Prod** (production / fabrication)
+* **CoreServicesVnet** (services essentiels internes)
+* **ManufacturingVnet** (production / fabrication)
 
 Je vais activer la communication grâce au **peering VNet**.
 
@@ -63,7 +63,7 @@ Je vais activer la communication grâce au **peering VNet**.
 
 | Paramètre            | Valeur                 |
 | -------------------- | ---------------------- |
-| Nom VM               | `SrvCore-VM01`         |
+| Nom VM               | `CoreservucesVM`         |
 | Groupe de ressources | `rg-tp05-connectivite` |
 | Région               | East US                |
 | Image                | Windows Server 2019    |
@@ -85,7 +85,7 @@ Dans l’onglet **Networking**, cliquer **Create new VNet**
 
 | Paramètre         | Valeur         |
 | ----------------- | -------------- |
-| Nom VNet          | `VNet-Socle`   |
+| Nom VNet          | `CoreServicesVnet`   |
 | Adresse           | `10.10.0.0/16` |
 | Sous-réseau       | `Subnet-Core`  |
 | Adresse du subnet | `10.10.1.0/24` |
@@ -110,7 +110,7 @@ Dans l’onglet **Networking**, cliquer **Create new VNet**
 
 | Paramètre     | Valeur              |
 | ------------- | ------------------- |
-| Nom VM        | `Prod-VM01`         |
+| Nom VM        | `ManufacturingVM`         |
 | Région        | East US             |
 | Image         | Windows Server 2019 |
 | Username      | `Polo`        |
@@ -126,7 +126,7 @@ Dans l’onglet Réseau → **Create new VNet**
 
 | Paramètre         | Valeur          |
 | ----------------- | --------------- |
-| Nom VNet          | `VNet-Prod`     |
+| Nom VNet          | `ManufacturingVnet`     |
 | Adresse           | `172.20.0.0/16` |
 | Sous-réseau       | `Subnet-Prod`   |
 | Adresse du subnet | `172.20.1.0/24` |
@@ -146,8 +146,8 @@ Menu → **Network Watcher** → *Connection Troubleshoot*
 
 | Champ       | Valeur       |
 | ----------- | ------------ |
-| Source      | SrvCore-VM01 |
-| Destination | Prod-VM01    |
+| Source      | CoreservicesVM |
+| Destination | ManufacturingVM    |
 | Protocole   | TCP          |
 | Port        | 3389         |
 
@@ -160,31 +160,31 @@ Menu → **Network Watcher** → *Connection Troubleshoot*
 
 # 🔥 **Tâche 4 — Configurer le Peering VNet**
 
-### 4.1. Depuis VNet-Socle
+### 4.1. Depuis 
 
 * Aller dans :
-  **VNet-Socle → Peering → Add**
+  **CoreServicesVnet → Peering → Add**
 
 ➡️ **Paramètres :**
 
 | Paramètre               | Valeur          |
 | ----------------------- | --------------- |
-| Nom du peering          | `Socle-to-Prod` |
-| Remote VNet             | `VNet-Prod`     |
+| Nom du peering          | `Core-to-Prod` |
+| Remote VNet             | `ManufacturingVnet`     |
 | Allow VNet access       | ✔️              |
 | Allow forwarded traffic | ✔️              |
 
 **Capture 6:**
 ---
 
-### 4.2. Depuis VNet-Prod
+### 4.2. Depuis ManufacturingVnet
 
 Même manipulation :
 
 | Paramètre               | Valeur          |
 | ----------------------- | --------------- |
-| Nom                     | `Prod-to-Socle` |
-| Remote VNet             | `VNet-Socle`    |
+| Nom                     | `Prod-to-Core` |
+| Remote VNet             | `CoreServicesVnet`    |
 | Allow VNet access       | ✔️              |
 | Allow forwarded traffic | ✔️              |
 
@@ -197,14 +197,14 @@ Même manipulation :
 
 # 🔥 **Tâche 5 — Tester la connexion via PowerShell Run Command**
 
-### 5.1. Récupérer l’IP privée de SrvCore-VM01
+### 5.1. Récupérer l’IP privée de CoreServicesVM
 
 Exemple : **10.10.1.4**
 
-### 5.2. Depuis Prod-VM01
+### 5.2. Depuis ManufacturingVM
 
 Aller dans :
-**Prod-VM01 → Run Command → RunPowerShellScript**
+**ManufacturingVM → Run Command → RunPowerShellScript**
 
 Exécuter :
 
@@ -221,9 +221,9 @@ Résultat attendu : **TcpTestSucceeded : True**
 
 # 🔥 **Tâche 6 — Créer une route personnalisée (UDR)**
 
-### 6.1. Ajouter un nouveau sous-réseau "Perimeter" dans VNet-Socle
+### 6.1. Ajouter un nouveau sous-réseau "Perimeter" dans CoreServicesVnet
 
-* VNet-Socle → Subnets → **Add**
+* CoreServicesVnet → Subnets → **Add**
 
 | Paramètre | Valeur             |
 | --------- | ------------------ |
@@ -240,7 +240,7 @@ Menu → **Route tables → Create**
 
 | Paramètre                  | Valeur     |
 | -------------------------- | ---------- |
-| Nom                        | `rt-socle` |
+| Nom                        | `rt-CoreServices` |
 | Region                     | East US    |
 | Propager routes de gateway | No         |
 
@@ -265,7 +265,7 @@ Table → **Routes → Add**
 
 | Paramètre | Valeur      |
 | --------- | ----------- |
-| VNet      | VNet-Socle  |
+| VNet      | CoreServicesVnet  |
 | Subnet    | Subnet-Core |
 
 **Capture 10 :**
