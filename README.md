@@ -1,291 +1,307 @@
 # TP-05-Connectivit-intersites-Azure-VNet-Peering-Routage-personnalis-
 Ce TP explore la connectivité intersite dans Azure via le peering de réseaux virtuels (VNet Peering) pour établir une communication privée entre réseaux, y compris entre régions.  Il couvre la configuration de routage personnalisé (UDR) pour diriger le trafic, notamment vers un pare-feu Azure dans le hub.  
 
+---
 
-# 🧪 TP 05 — Connectivité intersites Azure (VNet Peering & Routage personnalisé)
+# 📘 TP 05 – Connectivité Intersites dans Azure
 
-Dans ce laboratoire, je mets en œuvre la connectivité entre deux réseaux virtuels Azure isolés.
-Pour cela, j’ai créé deux machines virtuelles dans deux Virtual Networks différents, testé la communication, configuré un VNet Peering, validé la connexion via Network Watcher et PowerShell, puis ajouté une route personnalisée pour contrôler le trafic réseau.
+**Mise en œuvre du Peering VNet + Tests de connectivité + Routes personnalisées**
 
-Ce TP est prévu pour être exécuté dans Azure Portal, étape par étape, même pour un débutant.
+---
 
 ## 🎯 Objectifs du TP
 
-Comprendre comment les réseaux virtuels Azure communiquent
+Dans ce laboratoire, je vais :
 
-Configurer un VNet peering entre deux zones réseau segmentées
+* Créer deux réseaux virtuels isolés
+* Déployer une machine virtuelle dans chaque réseau
+* Tester la connectivité avant et après peering
+* Configurer un peering entre les VNets
+* Vérifier la communication via Network Watcher et via PowerShell
+* Créer une route personnalisée (UDR — User Defined Route)
+* Documenter le tout avec des captures d’écran
 
-Tester la connectivité avec Network Watcher et PowerShell
+---
 
-Mettre en place une User Defined Route (UDR)
+# 🏗️ Scénario
 
-Apprendre la structure d’un réseau Azure “Core” + “Production”
+Mon entreprise dans laquelle je travaille souhaite  séparer les services **internes** (DNS, sécurité, cœur SI) et les services **production**.
+Cependant, certains modules doivent communiquer entre eux.
 
-## 🗺️ Architecture cible du TP
-CoreInfraVnet (10.10.0.0/16)
- ├── CoreSubnet (10.10.0.0/24)
- └── PerimeterSubnet (10.10.1.0/24)
-       ↑ Future NVA (10.10.1.7)
+Ce TP simule cette architecture :
 
-ProdServicesVnet (172.20.0.0/16)
- └── ProdSubnet (172.20.0.0/24)
+* **VNet-Socle** (services essentiels internes)
+* **VNet-Prod** (production / fabrication)
 
-Peering bidirectionnel entre les deux VNets
-Routage personnalisé du Core vers la NVA
+Je vais activer la communication grâce au **peering VNet**.
 
-## 🛠️ Prérequis
+---
 
-Un abonnement Azure (même gratuit)
+# 🛠️ Compétences du TP
 
-Accès au portail : https://portal.azure.com
+1. Création de VM + VNet
+2. Création d’un second VNet + second VM
+3. Test de connectivité avec Network Watcher
+4. Peering entre VNets
+5. Test via PowerShell (Run Command)
+6. Création d’une route personnalisée
 
-Permission Contributor ou plus
+---
 
-# ✅ Tâche 1 — Création du réseau "Core" et de la VM CoreInfraVM
-🎯 Objectif
+# 🔥 **Tâche 1 — Créer un VNet + une VM (Services internes)**
 
-Déployer le réseau “services centraux” et une VM associée.
+### 1.1. Se connecter au portail Azure
 
-👉 Étapes détaillées
-Étape 1 : Créer une machine virtuelle
+👉 [https://portal.azure.com](https://portal.azure.com)
 
-Dans le portail Azure, rechercher Virtual Machines
+### 1.2. Créer une machine virtuelle
 
-Cliquer sur Create → Azure virtual machine
+* Rechercher **Virtual Machines**
+* Cliquer **Create → Azure Virtual Machine**
 
-Renseigner les valeurs suivantes :
+➡️ **Paramètres à renseigner**
 
-Paramètre	Valeur
-Resource Group	tp05-rg (crée-le si besoin)
-Virtual machine name	CoreInfraVM
-Region	East US
-Image	Windows Server 2019 Datacenter
-Size	Standard_DS2_v3
-Username	infraadmin
-Password	un mot de passe complexe
-Public inbound ports	None
-Étape 2 : Créer le Virtual Network lié à la VM
+| Paramètre            | Valeur                 |
+| -------------------- | ---------------------- |
+| Nom VM               | `SrvCore-VM01`         |
+| Groupe de ressources | `rg-tp05-connectivite` |
+| Région               | East US                |
+| Image                | Windows Server 2019    |
+| Taille               | Standard_DS2_v3        |
+| Username             | `Serge`           |
+| Password             | (mot de passe fort)    |
+| Ports publics        | Aucun                  |
 
-Accéder à l’onglet Networking
+**Capture1  :**
+👉 `images/vm-core-basics.png`
 
-Sous "Virtual Network", cliquer sur Create new
+---
 
-Renseigner :
+### 1.3. Créer le réseau virtuel associé
 
-Paramètre	Valeur
-VNet Name	CoreInfraVnet
-Address space	10.10.0.0/16
-Subnet name	CoreSubnet
-Subnet range	10.10.0.0/24
+Dans l’onglet **Networking**, cliquer **Create new VNet**
 
-Valider → OK.
+➡️ **Configurer :**
 
-Étape 3 : Finaliser la création
+| Paramètre         | Valeur         |
+| ----------------- | -------------- |
+| Nom VNet          | `VNet-Socle`   |
+| Adresse           | `10.10.0.0/16` |
+| Sous-réseau       | `Subnet-Core`  |
+| Adresse du subnet | `10.10.1.0/24` |
 
-Aller dans l'onglet Monitoring
+**Capture 2 :**
+👉 `images/vnet-socle.png`
 
-Désactiver Boot diagnostics
+---
 
-Cliquer sur Review + Create
+### 1.4. Finaliser la création
 
-Puis Create
+* Désactiver Boot Diagnostics
+* Cliquer **Review + Create → Create**
 
-# ✅ Tâche 2 — Création du réseau “Production” et de la VM ProdServicesVM
-🎯 Objectif
+---
 
-Créer un second réseau totalement isolé du premier.
+# 🔥 **Tâche 2 — Créer un second VNet + seconde VM (Production)**
 
-👉 Étapes détaillées
+### 2.1. Créer une nouvelle VM
 
-Aller dans Virtual Machines → Create
+➡️ **Paramètres**
 
-Renseigner :
+| Paramètre     | Valeur              |
+| ------------- | ------------------- |
+| Nom VM        | `Prod-VM01`         |
+| Région        | East US             |
+| Image         | Windows Server 2019 |
+| Username      | `Polo`        |
+| Ports publics | Aucun               |
 
-Paramètre	Valeur
-Virtual machine name	ProdServicesVM
-Resource group	tp05-rg
-Region	East US
-Image	Windows Server 2019
-Size	Standard_DS2_v3
-Username	infraadmin
-Ports publics	None
-Créer un nouveau réseau virtuel pour la production
+**Capture 3:**
 
-Dans l’onglet Networking :
+---
 
-Virtual Network → Create new
+### 2.2. Créer le deuxième VNet
 
-Renseigner :
+Dans l’onglet Réseau → **Create new VNet**
 
-Paramètre	Valeur
-VNet Name	ProdServicesVnet
-Address space	172.20.0.0/16
-Subnet name	ProdSubnet
-Subnet range	172.20.0.0/24
+| Paramètre         | Valeur          |
+| ----------------- | --------------- |
+| Nom VNet          | `VNet-Prod`     |
+| Adresse           | `172.20.0.0/16` |
+| Sous-réseau       | `Subnet-Prod`   |
+| Adresse du subnet | `172.20.1.0/24` |
 
-Finaliser : Review + Create → Create
+**Capture 4  :**
+👉 `images/vnet-prod.png`
 
-# ✅ Tâche 3 — Tester la connexion entre les VM avec Network Watcher
-🎯 Objectif
+---
 
-Vérifier qu’avant le peering les VM NE PEUVENT PAS communiquer.
+# 🔥 **Tâche 3 — Tester la connexion avec Network Watcher**
 
-👉 Étapes détaillées
+### 3.1. Accéder à Network Watcher
 
-Rechercher Network Watcher
+Menu → **Network Watcher** → *Connection Troubleshoot*
 
-Dans le menu, cliquer sur Connection Troubleshoot
+➡️ **Paramètres :**
 
-Configurer :
+| Champ       | Valeur       |
+| ----------- | ------------ |
+| Source      | SrvCore-VM01 |
+| Destination | Prod-VM01    |
+| Protocole   | TCP          |
+| Port        | 3389         |
 
-Paramètre	Valeur
-Source type	Virtual machine
-Source VM	CoreInfraVM
-Destination type	Virtual machine
-Destination VM	ProdServicesVM
-Protocol	TCP
-Port	3389
+**Capture 5 :**
+👉 `images/network-watcher-before-peering.png`
 
-Cliquer sur Run diagnostic
+➡️ Le résultat doit être **Unreachable** (normal !).
 
-➡️ Résultat attendu : Unreachable (normal)
+---
 
-# ✅ Tâche 4 — Configurer le VNet Peering
-🎯 Objectif
+# 🔥 **Tâche 4 — Configurer le Peering VNet**
 
-Autoriser les réseaux Core et Production à communiquer.
+### 4.1. Depuis VNet-Socle
 
-👉 Étapes détaillées
-Depuis CoreInfraVnet
+* Aller dans :
+  **VNet-Socle → Peering → Add**
 
-Aller dans Virtual Networks → CoreInfraVnet
+➡️ **Paramètres :**
 
-Menu Peerings → Add
+| Paramètre               | Valeur          |
+| ----------------------- | --------------- |
+| Nom du peering          | `Socle-to-Prod` |
+| Remote VNet             | `VNet-Prod`     |
+| Allow VNet access       | ✔️              |
+| Allow forwarded traffic | ✔️              |
 
-Renseigner :
+**Capture 6:**
+---
 
-Paramètre	Valeur
-Peering name	Prod-to-Core
-Virtual Network	ProdServicesVnet
-Allow VNet access	✔
-Allow forwarded traffic	✔
+### 4.2. Depuis VNet-Prod
 
-Créer.
+Même manipulation :
 
-Vérification
+| Paramètre               | Valeur          |
+| ----------------------- | --------------- |
+| Nom                     | `Prod-to-Socle` |
+| Remote VNet             | `VNet-Socle`    |
+| Allow VNet access       | ✔️              |
+| Allow forwarded traffic | ✔️              |
 
-Aller dans Peerings
+**Capture 7:**
+👉 `images/peering-connected.png`
 
-Statut attendu : Connected
+➡️ Vérifier que l’état passe à **Connected**
 
-Faire la même vérification dans ProdServicesVnet.
+---
 
-# ✅ Tâche 5 — Test de connectivité avec PowerShell (Run Command)
-🎯 Objectif
+# 🔥 **Tâche 5 — Tester la connexion via PowerShell Run Command**
 
-Confirmer que le peering fonctionne en testant la communication directe IP privée → IP privée.
+### 5.1. Récupérer l’IP privée de SrvCore-VM01
 
-👉 Étapes détaillées
-1. Récupérer l’IP privée
+Exemple : **10.10.1.4**
 
-Ouvrir CoreInfraVM
+### 5.2. Depuis Prod-VM01
 
-Dans Networking, noter l’IP privée (ex : 10.10.0.4)
-
-2. Tester la connexion depuis ProdServicesVM
-
-Ouvrir ProdServicesVM
-
-Menu gauche → Run command
-
-Choisir RunPowerShellScript
+Aller dans :
+**Prod-VM01 → Run Command → RunPowerShellScript**
 
 Exécuter :
 
-Test-NetConnection 10.10.0.4 -Port 3389
+```powershell
+Test-NetConnection 10.10.1.4 -Port 3389
+```
 
+Résultat attendu : **TcpTestSucceeded : True**
 
-➡️ Résultat attendu : TcpTestSucceeded : True
+**Capture 8 :**
+👉 `images/test-netconnection-success.png`
 
-# ✅ Tâche 6 — Créer une User Defined Route (UDR)
-🎯 Objectif
+---
 
-Faire passer le trafic Core → Perimeter via une appliance virtuelle fictive.
+# 🔥 **Tâche 6 — Créer une route personnalisée (UDR)**
 
-👉 Étapes détaillées
-Étape 1 : Ajouter un subnet “Perimeter”
+### 6.1. Ajouter un nouveau sous-réseau "Perimeter" dans VNet-Socle
 
-Ouvrir CoreInfraVnet
+* VNet-Socle → Subnets → **Add**
 
-Aller dans Subnets → Add
+| Paramètre | Valeur             |
+| --------- | ------------------ |
+| Nom       | `Subnet-Perimeter` |
+| Adresse   | `10.10.2.0/24`     |
 
-Paramètres :
+**Capture 9:**
 
-Paramètre	Valeur
-Name	PerimeterSubnet
-Range	10.10.1.0/24
-Étape 2 : Créer une table de routage
+---
 
-Rechercher Route tables
+### 6.2. Créer une table de routage
 
-Cliquer sur Create
+Menu → **Route tables → Create**
 
-Renseigner :
+| Paramètre                  | Valeur     |
+| -------------------------- | ---------- |
+| Nom                        | `rt-socle` |
+| Region                     | East US    |
+| Propager routes de gateway | No         |
 
-Paramètre	Valeur
-Name	rt-CoreInfra
-Resource group	tp05-rg
-Region	East US
-Propagate gateway routes	No
+---
 
-Créer.
+### 6.3. Ajouter une route
 
-Étape 3 : Ajouter la route personnalisée
+Table → **Routes → Add**
 
-Ouvrir rt-CoreInfra
+| Paramètre        | Valeur                             |
+| ---------------- | ---------------------------------- |
+| Nom route        | `Perimeter-to-Core`                |
+| Destination      | `10.10.0.0/16`                     |
+| Next hop         | Virtual Appliance                  |
+| Adresse next hop | `10.10.2.7` *(futur firewall/NVA)* |
 
-Menu Routes → Add
+---
 
-Paramètres :
+### 6.4. Associer la route au sous-réseau
 
-Paramètre	Valeur
-Route name	PerimeterToCore
-Destination type	IP address
-Destination prefix	10.10.0.0/16
-Next hop	Virtual appliance
-Next hop IP	10.10.1.7
-Étape 4 : Associer la table au CoreSubnet
+* Route table → **Subnets → Associate**
 
-Menu Subnets → Associate
+| Paramètre | Valeur      |
+| --------- | ----------- |
+| VNet      | VNet-Socle  |
+| Subnet    | Subnet-Core |
 
-Sélectionner :
+**Capture 10 :**
+👉 `images/udr-routing.png`
 
-Paramètre	Valeur
-VNet	CoreInfraVnet
-Subnet	CoreSubnet
+---
+
 # 🧹 Nettoyage des ressources
-Via le portail :
 
-Aller dans Resource groups
+Supprimer le groupe de ressources :
 
-Choisir tp05-rg
+### Via portail
 
-Cliquer Delete resource group
+➡️ Groupe de ressources → **Delete resource group**
 
-Via PowerShell
-Remove-AzResourceGroup -Name tp05-rg
+### Via PowerShell
 
-Via Azure CLI
-az group delete --name tp05-rg
+```powershell
+Remove-AzResourceGroup -Name rg-tp05-connectivite
+```
 
-# 📝 Points essentiels à retenir
+### Via Azure CLI
 
-Les VNets ne communiquent pas entre eux sans peering
+```bash
+az group delete --name rg-tp05-connectivite
+```
 
-Le VNet peering utilise le backbone Microsoft, rapide et sécurisé
+---
 
-Les UDR permettent d’imposer un chemin réseau
+# 📌 Points clés à retenir
 
-Network Watcher est indispensable pour diagnostiquer la connectivité
+* Les ressources dans différents VNets **ne communiquent pas nativement**
+* Le **VNet peering** permet une connectivité transparente
+* Le trafic utilise l’infrastructure **backbone Microsoft**
+* Les **UDR** permettent de contrôler le chemin du trafic
+* **Network Watcher** est essentiel pour diagnostiquer la connectivité
 
-Les Run Commands permettent des tests sans se connecter en RDP
+---
+
